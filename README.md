@@ -2,14 +2,11 @@
 
 Run with:
 
-    python test.py session-xxxxx.json
+    python tracer.py -U -i crypto_box_curve25519xsalsa20poly1305_tweet_keypair -i crypto_box_curve25519xsalsa20poly1305_tweet -i crypto_secretbox_xsalsa20poly1305_tweet -i crypto_secretbox_xsalsa20poly1305_tweet_open -i send -i recv -i close -X libNimsWrap.so com.supercell.clashofclans
 
-## Dependencies
+## Installation
 
-[blake2_py](https://github.com/buggywhip/blake2_py)
+Compile `tweetnacl-usable` with:
 
-[tweetnacl-usable](https://github.com/ultramancool/tweetnacl-usable)
-
-**Note:** You can compile tweetnacl-usable with:
-
+    cd tweetnacl-usable
     gcc -fPIC -shared -o tweetnacl.so tweetnacl.h tweetnacl.c randombytes.h randombytes.c
