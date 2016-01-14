@@ -10,3 +10,7 @@ Compile `tweetnacl-usable` with:
 
     cd tweetnacl-usable
     gcc -fPIC -shared -o tweetnacl.so tweetnacl.h tweetnacl.c randombytes.h randombytes.c
+
+Install Frida with:
+
+    sudo easy_install frida
