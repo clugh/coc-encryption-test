@@ -1,9 +1,6 @@
 [submodule "__handlers__"]
 	path = __handlers__
 	url = git@github.com:clugh/frida-coc-handlers.git
-[submodule "blake2_py"]
-	path = blake2_py
-	url = git@github.com:clugh/blake2_py.git
 [submodule "tweetnacl-usable"]
 	path = tweetnacl-usable
 	url = https://github.com/ultramancool/tweetnacl-usable.git

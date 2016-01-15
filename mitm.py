@@ -1,42 +1,13 @@
-from blake2_py.blake2 import BLAKE2b
+tweetnacl = __import__('tweetnacl-usable.tweetnacl', fromlist=["crypto_box_curve25519xsalsa20poly1305_tweet_keypair", "crypto_box_curve25519xsalsa20poly1305_tweet_beforenm", "crypto_box_curve25519xsalsa20poly1305_tweet_afternm", "crypto_box_curve25519xsalsa20poly1305_tweet_open_afternm"])
+from pyblake2 import blake2b
 import json
 import binascii
 import array
 
-from ctypes import c_char_p, c_ulonglong, CDLL, create_string_buffer
-
-_tweetnacl = CDLL("./tweetnacl-usable/tweetnacl.so")
-_tweetnacl.crypto_box_curve25519xsalsa20poly1305_tweet_keypair.argtypes = (c_char_p, c_char_p)
-_tweetnacl.crypto_box_curve25519xsalsa20poly1305_tweet_beforenm.argtypes = (c_char_p, c_char_p, c_char_p)
-_tweetnacl.crypto_secretbox_xsalsa20poly1305_tweet.argtypes = (c_char_p, c_char_p, c_ulonglong, c_char_p, c_char_p)
-_tweetnacl.crypto_secretbox_xsalsa20poly1305_tweet_open.argtypes = (c_char_p, c_char_p, c_ulonglong, c_char_p, c_char_p)
-
-def crypto_box_curve25519xsalsa20poly1305_tweet_keypair():
-  global _tweetnacl
-  pk = create_string_buffer(32)
-  sk = create_string_buffer(32)
-  _tweetnacl.crypto_box_curve25519xsalsa20poly1305_tweet_keypair(pk, sk)
-  return (pk, sk)
-
-def crypto_box_curve25519xsalsa20poly1305_tweet_beforenm(pk, sk):
-  global _tweetnacl
-  s = create_string_buffer(32)
-  _tweetnacl.crypto_box_curve25519xsalsa20poly1305_tweet_beforenm(s, c_char_p(pk), c_char_p(sk))
-  return s
-
-def crypto_secretbox_xsalsa20poly1305_tweet(message, nonce, s):
-  global _tweetnacl
-  length = len(message)
-  ciphertext = create_string_buffer(length)
-  _tweetnacl.crypto_secretbox_xsalsa20poly1305_tweet(ciphertext, c_char_p(message), c_ulonglong(length), c_char_p(nonce), s)
-  return ciphertext
-
-def crypto_secretbox_xsalsa20poly1305_tweet_open(ciphertext, nonce, s):
-  global _tweetnacl
-  length = len(ciphertext)
-  message = create_string_buffer(length)
-  _tweetnacl.crypto_secretbox_xsalsa20poly1305_tweet_open(message, c_char_p(ciphertext), c_ulonglong(length), c_char_p(nonce), s)
-  return message
+crypto_box_keypair = tweetnacl.crypto_box_curve25519xsalsa20poly1305_tweet_keypair
+crypto_box_beforenm = tweetnacl.crypto_box_curve25519xsalsa20poly1305_tweet_beforenm
+crypto_box_afternm = tweetnacl.crypto_box_curve25519xsalsa20poly1305_tweet_afternm
+crypto_box_open_afternm = tweetnacl.crypto_box_curve25519xsalsa20poly1305_tweet_open_afternm
 
 class mitm:
 
@@ -55,24 +26,26 @@ class mitm:
     event = json.loads(event)
     if event["type"] == "send" or event["type"] == "recv":
       if event["messageid"] == "2774":
+        print "-> {}".format(event["messageid"])
         return
       elif event["messageid"] == "4e84":
+        print "<- {}".format(event["messageid"])
         return
       else:
         if self.serverkey:
           if self.pk:
             if self.sk:
               if event["messageid"] == "2775":
-                b2 = BLAKE2b(digest_size=24)
+                b2 = blake2b(digest_size=24)
                 b2.update(self.pk)
                 b2.update(self.serverkey)
-                nonce = b2.final()
+                nonce = b2.digest()
                 message = event["message"].decode("hex")
-                self.s = crypto_box_curve25519xsalsa20poly1305_tweet_beforenm(self.serverkey, self.sk)
-                ciphertext = crypto_secretbox_xsalsa20poly1305_tweet(message, nonce, self.s)
+                self.s = crypto_box_beforenm(self.serverkey, self.sk)
+                ciphertext = crypto_box_afternm(message, nonce, self.s)
                 if binascii.hexlify(ciphertext) == event["ciphertext"]:
                   print "-> 2775 ciphertext matches"
-                  message = crypto_secretbox_xsalsa20poly1305_tweet_open(event["ciphertext"].decode("hex"), nonce, self.s)
+                  message = crypto_box_open_afternm(event["ciphertext"].decode("hex"), nonce, self.s)
                   if binascii.hexlify(message) == event["message"]:
                     print "-> | {} message matches".format(event["messageid"])
                   else:
@@ -83,13 +56,13 @@ class mitm:
               elif self.snonce:
                 if event["messageid"] == "4e88":
                   if self.s:
-                    b2 = BLAKE2b(digest_size=24)
+                    b2 = blake2b(digest_size=24)
                     b2.update(self.snonce)
                     b2.update(self.pk)
                     b2.update(self.serverkey)
-                    nonce = b2.final()
+                    nonce = b2.digest()
                     ciphertext = event["ciphertext"].decode("hex")
-                    message = crypto_secretbox_xsalsa20poly1305_tweet_open(ciphertext, nonce, self.s)
+                    message = crypto_box_open_afternm(ciphertext, nonce, self.s)
                     if binascii.hexlify(message) == event["message"]:
                       print "<- 4e88 message matches"
                     else:
@@ -104,10 +77,10 @@ class mitm:
                       if event["type"] == "send":
                         self.snonce = self.increment_nonce(self.snonce)
                         message = event["message"].decode("hex")
-                        ciphertext = crypto_secretbox_xsalsa20poly1305_tweet(message, self.snonce, self.k)
+                        ciphertext = crypto_box_afternm(message, self.snonce, self.k)
                         if binascii.hexlify(ciphertext) == event["ciphertext"]:
                           print "-> {} ciphertext matches".format(event["messageid"])
-                          message = crypto_secretbox_xsalsa20poly1305_tweet_open(event["ciphertext"].decode("hex"), self.snonce, self.k)
+                          message = crypto_box_open_afternm(event["ciphertext"].decode("hex"), self.snonce, self.k)
                           if binascii.hexlify(message) == event["message"]:
                             print "-> | {} message matches".format(event["messageid"])
                           else:
@@ -117,7 +90,7 @@ class mitm:
                       elif event["type"] == "recv":
                         self.rnonce = self.increment_nonce(self.rnonce)
                         ciphertext = event["ciphertext"].decode("hex")
-                        message = crypto_secretbox_xsalsa20poly1305_tweet_open(ciphertext, self.rnonce, self.k)
+                        message = crypto_box_open_afternm(ciphertext, self.rnonce, self.k)
                         if binascii.hexlify(message) == event["message"]:
                           print "<- {} message matches".format(event["messageid"])
                         else:
@@ -137,7 +110,7 @@ class mitm:
     elif event["type"] == "keypair":
       self.pk = event["pk"].decode("hex")
       self.sk = event["sk"].decode("hex")
-    elif event["type"] == "crypto_box":
+    elif event["type"] == "beforenm":
       self.serverkey = event["serverkey"].decode("hex")
     else:
       raise Exception("Invalid event type.")
