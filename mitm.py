@@ -62,7 +62,8 @@ class mitm:
                   self.log("-> Warning: failed to encrypt {}".format(event["messageid"]))
                   raise
                 else:
-                  self.snonce = message[24:48]
+                  if message[24:48] != self.snonce:
+                    raise Exception("Client nonce mismatch ({}).".format(message[24:48].encode("hex")))
                   if ciphertext == event["ciphertext"]:
                     self.log("-> {} ciphertext matches".format(event["messageid"]))
                   else:
@@ -118,9 +119,9 @@ class mitm:
                     else:
                       raise Exception("Missing k.")
                   else:
-                    raise Exception("Missing rnonce.")
+                    raise Exception("Missing server nonce.")
               else:
-                raise Exception("Missing snonce.")
+                raise Exception("Missing client nonce.")
             else:
               raise Exception("Missing secret key.")
           else:
@@ -132,7 +133,8 @@ class mitm:
       self.session.write_bytes(int(event["sk"], 16), bytes(self.sk))
       self.script.post_message({"type": "keypair"})
     elif event["type"] == "randombytes":
-      self.session.write_bytes(int(event["randombytes"], 16), self.snonce)
+      if event["length"] == 24:
+        self.session.write_bytes(int(event["randombytes"], 16), self.increment_nonce_firstbyte(self.snonce))
       self.script.post_message({"type": "randombytes"})
     elif event["type"] == "beforenm":
       self.serverkey = PublicKey(bytes(event["serverkey"]))
@@ -151,6 +153,14 @@ class mitm:
       else:
         arr[i] = arr[i] + bump
         break
+    return arr.tostring()
+
+  def increment_nonce_firstbyte(self, nonce):
+    arr = array.array('B', nonce)
+    if arr[0] == 0xff:
+      raise Exception("Client nonce overflow.")
+    elif (arr[0] - 1) > 0:
+      arr[0] += 1
     return arr.tostring()
 
   def log(self, message):
