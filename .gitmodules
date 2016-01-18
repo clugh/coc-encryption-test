@@ -1,3 +1,0 @@
-[submodule "__handlers__"]
-	path = __handlers__
-	url = git@github.com:clugh/frida-coc-handlers.git
