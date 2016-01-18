@@ -1008,13 +1008,14 @@ function regExpEscape(s) {
 """
 
 class Tracer(object):
-    def __init__(self, reactor, repository, profile, log_handler=None):
+    def __init__(self, reactor, repository, profile, log_handler=None, session=None):
         self._reactor = reactor
         self._repository = repository
         self._profile = profile
         self._script = None
         self._log_handler = log_handler
-        self.mitm = mitm()
+        self._mitm = None
+        self._session = session
 
     def start_trace(self, session, ui):
         def on_create(*args):
@@ -1068,6 +1069,7 @@ class Tracer(object):
             'name': '+start',
             'payload': {}
         })
+        self._mitm = mitm(self._session, self._script)
 
         return working_set
 
@@ -1227,7 +1229,7 @@ recv(onStanza);
                 ui.on_trace_error(stanza['payload'])
                 handled = True
             elif stanza['from'] == "/coc":
-                self.mitm.handle_event(stanza["json"])
+                self._mitm.handle_event(stanza)
                 handled = True
         if not handled:
             print(message)
@@ -1495,7 +1497,7 @@ def main():
             return True
 
         def _start(self):
-            self._tracer = Tracer(self._reactor, FileRepository(), self._profile, log_handler=self._log)
+            self._tracer = Tracer(self._reactor, FileRepository(), self._profile, log_handler=self._log, session=self._session)
             self._targets = self._tracer.start_trace(self._session, self)
 
         def _stop(self):

@@ -2,19 +2,20 @@
 
 Run with:
 
-    python tracer.py -U -i crypto_box_curve25519xsalsa20poly1305_tweet_keypair -i crypto_box_curve25519xsalsa20poly1305_tweet_beforenm -i crypto_box_curve25519xsalsa20poly1305_tweet_afternm -i crypto_box_curve25519xsalsa20poly1305_tweet_open_afternm -i send -i recv -i close -X libNimsWrap.so com.supercell.clashofclans
+    python tracer.py -U -i crypto_box_curve25519xsalsa20poly1305_tweet_keypair -i crypto_box_curve25519xsalsa20poly1305_tweet_beforenm -i crypto_box_curve25519xsalsa20poly1305_tweet_afternm -i crypto_box_curve25519xsalsa20poly1305_tweet_open_afternm -i randombytes -i send -i recv -i close -X libNimsWrap.so com.supercell.clashofclans
 
 ## Installation
 
-Compile `tweetnacl-usable` with:
+Install `Frida` with:
 
-    cd tweetnacl-usable
-    gcc -fPIC -shared -o tweetnacl.so tweetnacl.h tweetnacl.c randombytes.h randombytes.c
+    pip install frida
 
-Install Frida with:
+Install `pynacl` with:
 
-    easy_install frida
+    pip install pynacl
 
-Install pyblake2 with:
+Note: `pynacl` depends on `ccfi`
+
+Install `pyblake2` with:
 
     pip install pyblake2
