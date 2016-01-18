@@ -79,6 +79,9 @@ class mitm:
                   raise
                 else:
                   self.dump(event)
+                  self.dump({"snonce": message[24:48]}, function="snonce2")
+                  if message[24:48] != self.snonce:
+                    raise Exception("Client nonce mismatch ({}).".format(message[24:48].encode("hex")))
                   self.snonce = message[24:48]
                   self.dump({"type": "snonce", "snonce": self.snonce})
                   if ciphertext != event["ciphertext"]:
@@ -143,9 +146,9 @@ class mitm:
                     else:
                       raise Exception("Missing k.")
                   else:
-                    raise Exception("Missing rnonce.")
+                    raise Exception("Missing server nonce.")
               else:
-                raise Exception("Missing snonce.")
+                raise Exception("Missing client nonce.")
             else:
               raise Exception("Missing secret key.")
           else:
@@ -157,9 +160,10 @@ class mitm:
       self.session.write_bytes(int(event["sk"], 16), bytes(self.sk))
       self.script.post_message({"type": "keypair"})
     elif event["type"] == "randombytes":
-      self.session.write_bytes(int(event["randombytes"], 16), self.snonce)
+      if event["length"] == 24:
+        self.session.write_bytes(int(event["randombytes"], 16), self.increment_nonce_firstbyte(self.snonce))
       self.script.post_message({"type": "randombytes"})
-      self.dump(event)
+      
     elif event["type"] == "beforenm":
       self.serverkey = PublicKey(bytes(event["serverkey"]))
       self.dump({"serverkey": self.serverkey}, function="serverkey")
@@ -180,6 +184,14 @@ class mitm:
       else:
         arr[i] = arr[i] + bump
         break
+    return arr.tostring()
+
+  def increment_nonce_firstbyte(self, nonce):
+    arr = array.array('B', nonce)
+    if arr[0] == 0xff:
+      raise Exception("Client nonce overflow.")
+    elif (arr[0] - 1) > 0:
+      arr[0] += 1
     return arr.tostring()
 
   def log(self, message):
