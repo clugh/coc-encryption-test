@@ -12,11 +12,8 @@
       {
         from: "/coc",
         type: "keypair",
-        pk: this.pk.toString(),
-        sk: this.sk.toString()
+        sk: state.hexdump(this.sk, 32)
       });
-      var op = recv("keypair", function(){});
-      op.wait();
     }
   }
 }

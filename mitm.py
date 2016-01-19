@@ -22,15 +22,11 @@ class mitm:
   def __init__(self, session, script):
     self.session = session
     self.script = script
-    # self.sk = PrivateKey("[private key here]".decode("hex"))
-    # self.pk = self.sk.public_key
-    # self.snonce = "[client nonce here]".decode("hex")
+    self.serverkey = PublicKey("47d1416f3cf982d2b510cab32ecc4f1a04971345446cb1af326f304f63da6264".decode("hex"))
 
   def handle_event(self, event):
     for key in event:
-      if event["type"] in {"keypair", "randombytes"}:
-        break
-      elif key in {"type", "from"}:
+      if key in {"type", "from"}:
         continue
       elif key == "messageid":
         event[key] = int(event[key], 16)
@@ -39,138 +35,88 @@ class mitm:
       elif type(event[key]) in {str, unicode}:
         event[key] = event[key].decode("hex")
     if event["type"] == "socket":
-      self.log("session started")
       self.tee = Tee(os.path.join(self.BASE_DIR, "session-{}.log".format(event["threadid"])))
-      if not (self.sk and self.pk):
-        self.sk = PrivateKey.generate()
-        self.pk = self.sk.public_key
-      if not self.snonce:
-        self.snonce = nacl.utils.random(Box.NONCE_SIZE)
-      self.dump({"pk": self.pk, "sk": self.sk}, function="keypair")
-      self.dump({"snonce": self.snonce}, function="snonce")
+      self.log("session started")
+    elif event["type"] == "keypair":
+      self.sk = PrivateKey(event["sk"])
+      self.dump({"sk": self.sk}, function="PrivateKey")
     elif event["type"] == "send" or event["type"] == "recv":
       if event["messageid"] == 10100:
-        self.log("-> {}".format(event["messageid"]))
         event.update({"message": event["buffer"]})
         self.dump(event)
       elif event["messageid"] == 20100:
-        self.log("<- {}".format(event["messageid"]))
         event.update({"message": event["buffer"]})
         self.dump(event)
       else:
         if self.serverkey:
-          if self.pk:
-            if self.sk:
-              if event["messageid"] == 10101:
-                b2 = blake2b(digest_size=24)
-                b2.update(bytes(self.pk))
-                b2.update(bytes(self.serverkey))
-                nonce = b2.digest()
-                message = event["message"]
-                event.update({"pk": self.pk, "serverkey": self.serverkey, "nonce2": nonce})
-                try:
-                  s = Box(self.sk, self.serverkey)
-                  event.update({"s2": s})
-                  ciphertext = s.encrypt(message, nonce)[24:]
-                  event.update({"ciphertext2": ciphertext})
-                except:
-                  self.dump(event)
-                  self.log("-> Warning: failed to encrypt {}".format(event["messageid"]))
-                  raise
-                else:
-                  self.dump(event)
-                  self.dump({"snonce": message[24:48]}, function="snonce2")
-                  if message[24:48] != self.snonce:
-                    raise Exception("Client nonce mismatch ({}).".format(message[24:48].encode("hex")))
-                  self.snonce = message[24:48]
-                  self.dump({"type": "snonce", "snonce": self.snonce})
-                  if ciphertext != event["ciphertext"]:
-                    self.log("-> Warning: {} ciphertext does not match".format(event["messageid"]))
-              elif self.snonce:
-                if event["messageid"] == 20104:
-                  b2 = blake2b(digest_size=24)
-                  b2.update(bytes(self.snonce))
-                  b2.update(bytes(self.pk))
-                  b2.update(bytes(self.serverkey))
-                  nonce = b2.digest()
-                  ciphertext = event["ciphertext"]
-                  event.update({"snonce": self.snonce, "pk": self.pk, "serverkey": self.serverkey, "nonce2": nonce})
-                  try:
-                    s = Box(self.sk, self.serverkey)
-                    event.update({"s2": s})
-                    message = s.decrypt(ciphertext, nonce)
-                    event.update({"message2": message})
-                  except:
-                    self.dump(event)
-                    self.log("<- Warning: failed to decrypt {}".format(event["messageid"]))
-                    raise
-                  else:
-                    self.dump(event)
-                    self.rnonce = message[:24]
-                    self.dump({"type": "rnonce", "rnonce": self.rnonce})
-                    self.k = Box.decode(message[24:56])
-                    self.dump({"type": "k", "k": self.k})
-                    if message != event["message"]:
-                      self.log("<- Warning: {} message does not match".format(event["messageid"]))
-                else:
-                  if self.rnonce:
-                    if self.k:
+          if self.sk:
+            if event["messageid"] == 10101:
+              self.pk = PublicKey(event["buffer"][:32])
+              self.dump({"pk": bytes(self.pk)}, function="PublicKey")
+              event["buffer"] = event["buffer"][32:]
+            if self.pk:
+              if event["messageid"] == 10101 or self.snonce:
+                if event["messageid"] in {10101, 20104} or self.rnonce:
+                  if event["messageid"] in {10101, 20104} or self.k:
+                    if event["messageid"] in {10101, 20104}:
+                      k = Box(self.sk, self.serverkey)
+                      self.dump({"s": k}, function="Box")
+                      b2 = blake2b(digest_size=24)
+                      if event["messageid"] == 20104:
+                        b2.update(bytes(self.snonce))
+                      b2.update(bytes(self.pk))
+                      b2.update(bytes(self.serverkey))
+                      nonce = b2.digest()
+                      if event["messageid"] == 10101:
+                        self.dump({"pk": self.pk, "serverkey": self.serverkey, "nonce": nonce}, function="blake2b")
+                      elif event["messageid"] == 20104:
+                        self.dump({"snonce": self.snonce, "pk": self.pk, "serverkey": self.serverkey, "nonce": nonce}, function="blake2b")
+                    else:
+                      k = self.k
                       if event["type"] == "send":
                         self.snonce = self.increment_nonce(self.snonce)
-                        message = event["message"]
-                        event.update({"k2": self.k, "snonce": self.snonce})
-                        try:
-                          ciphertext = self.k.encrypt(message, self.snonce)[24:]
-                          event.update({"ciphertext2": ciphertext})
-                        except:
-                          self.dump(event)
-                          self.log("-> Warning: failed to encrypt {}".format(event["messageid"]))
-                        else:
-                          self.dump(event)
-                          if ciphertext != event["ciphertext"]:
-                            self.log("-> Warning: {} ciphertext does not match".format(event["messageid"]))
+                        nonce = self.snonce
                       elif event["type"] == "recv":
                         self.rnonce = self.increment_nonce(self.rnonce)
-                        ciphertext = event["ciphertext"]
-                        event.update({"k2": self.k, "rnonce": self.rnonce})
-                        try:
-                          message = self.k.decrypt(ciphertext, self.rnonce)
-                          event.update({"message2": message})
-                        except:
-                          self.dump(event)
-                          self.log("<- Warning: failed to decrypt {}".format(event["messageid"]))
-                        else:
-                          self.dump(event)
-                          if message != event["message"]:
-                            self.log("<- Warning: {} message does not match".format(event["messageid"]))
+                        nonce = self.rnonce
+                    ciphertext = event["buffer"]
+                    event.update({"k": k, "nonce": nonce, "ciphertext": event["buffer"]})
+                    try:
+                      message = k.decrypt(ciphertext, nonce)
+                    except:
+                      self.dump(event, error=True)
+                      self.log("Warning: failed to decrypt {}".format(event["messageid"]), error=True)
+                      if event["messageid"] in {10101, 20104}:
+                        raise
                     else:
-                      raise Exception("Missing k.")
+                      if event["messageid"] == 10101:
+                        self.snonce = message[24:48]
+                        self.dump({"snonce": self.snonce}, function="slice")
+                        message = message[48:]
+                      elif event["messageid"] == 20104:
+                        self.rnonce = message[:24]
+                        self.k = Box.decode(message[24:56])
+                        self.dump({"rnonce": self.rnonce, "k": self.k}, function="slice")
+                        message = message[56:]
+                      event.update({"message": message})
+                      self.dump(event)
                   else:
-                    raise Exception("Missing server nonce.")
+                    raise Exception("Missing shared key ({}).".format(event["messageid"]))
+                else:
+                  raise Exception("Missing server nonce ({}).".format(event["messageid"]))
               else:
-                raise Exception("Missing client nonce.")
+                raise Exception("Missing client nonce ({}).".format(event["messageid"]))
             else:
-              raise Exception("Missing secret key.")
+              raise Exception("Missing public key ({}).".format(event["messageid"]))
           else:
-            raise Exception("Missing public key.")
+            raise Exception("Missing secret key ({}).".format(event["messageid"]))
         else:
-          raise Exception("Missing server key.")
-    elif event["type"] == "keypair":
-      self.session.write_bytes(int(event["pk"], 16), bytes(self.pk))
-      self.session.write_bytes(int(event["sk"], 16), bytes(self.sk))
-      self.script.post_message({"type": "keypair"})
-    elif event["type"] == "randombytes":
-      if event["length"] == 24:
-        self.session.write_bytes(int(event["randombytes"], 16), self.increment_nonce_firstbyte(self.snonce))
-      self.script.post_message({"type": "randombytes"})
-      
-    elif event["type"] == "beforenm":
-      self.serverkey = PublicKey(bytes(event["serverkey"]))
-      self.dump({"serverkey": self.serverkey}, function="serverkey")
+          raise Exception("Missing server key ({}).".format(event["messageid"]))
+    elif event["type"] == "closing":
+      self.log("session closed")
     elif event["type"] == "close":
       self.tee.flush()
       self.tee.close()
-      self.log("session closed")
     else:
       raise Exception("Invalid event type ({}).".format(event["type"]))
 
@@ -186,24 +132,21 @@ class mitm:
         break
     return arr.tostring()
 
-  def increment_nonce_firstbyte(self, nonce):
-    arr = array.array('B', nonce)
-    if arr[0] == 0xff:
-      raise Exception("Client nonce overflow.")
-    elif (arr[0] - 1) > 0:
-      arr[0] += 1
-    return arr.tostring()
+  def log(self, message, error=False):
+    if error:
+      print message
+    else:
+      self.script.post_message({"type": "log", "message": message})
 
-  def log(self, message):
-    self.script.post_message({"type": "log", "message": message})
-
-  def dump(self, event, function=None):
+  def dump(self, event, function=None, error=False):
     message = []
     if not function:
       function = event["type"]
+    if error:
+      function = function.rjust(31)
     message.append(function)
     message.append("--------------------".rjust(31))
-    ordered = ["messageid", "serverkey", "pk", "sk", "s", "s2", "k", "k2", "nonce", "nonce2", "snonce", "rnonce", "message", "message2", "ciphertext", "ciphertext2"]
+    ordered = ["messageid", "snonce", "rnonce", "pk", "sk", "serverkey", "s", "k", "nonce", "message", "ciphertext"]
     skipped = ["from", "type", "buffer"]
     intersection = [x for x in ordered if x in event.keys()]
     for key in intersection:
@@ -217,7 +160,7 @@ class mitm:
         value = event[key]
       message.append("".join(["".rjust(15), key.ljust(20), str(value)]))
     message.append("")
-    self.log("\n".join(message))
+    self.log("\n".join(message), error=error)
     extra = set(event.keys()) - set(ordered) - set(skipped)
     if extra:
-      self.log("Warning: Missed key(s) ({})".format(", ".join(extra)))
+      self.log("Warning: Missed key(s) ({})".format(", ".join(extra)), error=error)

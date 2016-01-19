@@ -8,6 +8,12 @@
       send(
       {
         from: "/coc",
+        type: "closing",
+      });
+      state.op.wait();
+      send(
+      {
+        from: "/coc",
         type: "close",
       });
     }

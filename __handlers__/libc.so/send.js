@@ -33,14 +33,13 @@
       });
       state.recv = function()
       {
-        recv("log", function(value)
+        state.op = recv("log", function(value)
         {
           log(value.message)
           state.recv();
         });
       };
       state.recv();
-      state.recv.wait();
     }
     if(state.sockfd && this.sockfd.equals(state.sockfd) && this.length > 0)
     {
@@ -49,16 +48,8 @@
         from: "/coc",
         type: "send",
         messageid: messageid,
-        message: state.message,
-        k: state.k,
-        nonce: state.nonce,
-        ciphertext: state.ciphertext,
         buffer: state.hexdump(this.buffer.add(7), this.length.toInt32() - 7)
       });
-      state.message = false;
-      state.k = false;
-      state.nonce = false;
-      state.ciphertext = false;
     }
   }
 }

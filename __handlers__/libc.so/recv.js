@@ -10,28 +10,22 @@
   {
     if(state.sockfd && this.sockfd.equals(state.sockfd))
     {
-      if(this.length == 7)
+      if(this.length > 0)
       {
-        state.messageid = state.hexdump(this.buffer, 2);
-      }
-      else
-      {
-        if(this.length > 0 && state.header)
+        if(state.messageid)
         {
-          state.buffer = state.hexdump(this.buffer, this.length.toInt32());
-          if(state.messageid == "4e84")
+          send(
           {
-            send(
-            {
-              from: "/coc",
-              type: "recv",
-              messageid: state.messageid,
-              buffer: state.hexdump(this.buffer, this.length.toInt32())
-            });
-            state.messageid = false;
-            state.header = false;
-            state.buffer = false;
-          }
+            from: "/coc",
+            type: "recv",
+            messageid: state.messageid,
+            buffer: state.hexdump(this.buffer, this.length.toInt32())
+          });
+          state.messageid = false;
+        }
+        else if(this.length == 7)
+        {
+          state.messageid = state.hexdump(this.buffer, 2);
         }
       }
     }
