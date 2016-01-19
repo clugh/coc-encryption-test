@@ -1,7 +1,6 @@
 import nacl.utils
 from nacl.public import Box, PrivateKey, PublicKey
 from pyblake2 import blake2b
-import array
 from tee import Tee
 import os
 
@@ -121,16 +120,7 @@ class mitm:
       raise Exception("Invalid event type ({}).".format(event["type"]))
 
   def increment_nonce(self, nonce):
-    arr = array.array('B', nonce)
-    bump = 2
-    for i in xrange(len(arr) - 1):
-      if (arr[i] + bump) > 0xff:
-        arr[i] = (arr[i] + bump) % 0x100
-        bump = 1
-      else:
-        arr[i] = arr[i] + bump
-        break
-    return arr.tostring()
+    return hex(long(nonce[::-1].encode("hex"), 16) + 2)[2:-1].decode("hex")[::-1]
 
   def log(self, message, error=False):
     if error:
